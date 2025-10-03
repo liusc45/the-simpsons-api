@@ -1,11 +1,51 @@
-version: '3.8'
+networks:
+  simpsons-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
 
 services:
   postgresql:
-    image: postgres
+    image: postgres:16-alpine
+    container_name: simpsons-postgres
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: user
     ports:
-      - 5432:5432
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - simpsons-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        NPM_TOKEN: ${NPM_TOKEN}
+    container_name: simpsons-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://user:password@postgresql:5432/user
+      APP_URL: ${APP_URL:-http://localhost:3000/api}
+      API_KEY: ${API_KEY}
+      LOGGER_LEVEL: ${LOGGER_LEVEL:-log}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    networks:
+      - simpsons-network
+    restart: unless-stopped
